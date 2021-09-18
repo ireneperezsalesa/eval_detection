@@ -1,4 +1,5 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Create groundtruth annotations (code adapted from Detectron2 demo)
+
 import argparse
 import glob
 import multiprocessing as mp
@@ -20,7 +21,7 @@ WINDOW_NAME = "COCO detections"
 
 
 def setup_cfg(args):
-    # load config from file and command-line arguments
+    # Load config from file and command-line arguments
     cfg = get_cfg()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
@@ -40,8 +41,6 @@ def get_parser():
         metavar="FILE",
         help="path to config file",
     )
-    parser.add_argument("--webcam", action="store_true", help="Take inputs from webcam.")
-    parser.add_argument("--video-input", help="Path to video file.")
     parser.add_argument(
         "--input",
         type=str,
@@ -83,14 +82,13 @@ if __name__ == "__main__":
     if args.input:
         image_id = 0
         annotations = []
-        #if len(args.input) == 1:
-        #    args.input = glob.glob(os.path.expanduser(args.input[0]))
-        #    assert args.input, "The input path(s) was not found"
         for img in sorted(os.listdir(args.input)):
-            # use PIL, to be consistent with evaluation
+			# Read image
             path = args.input + img
             img = read_image(path, format="BGR")
             start_time = time.time()
+			
+			# Run model over the image to get predictions
             predictions, visualized_output = demo.run_on_image(img)
             logger.info(
                 "{}: {} in {:.2f}s".format(
@@ -103,16 +101,11 @@ if __name__ == "__main__":
             )
             inst= predictions["instances"]
             classes = inst.pred_classes
-            print('classes: ', classes)
             preds_coco = instances_to_coco_json(predictions["instances"], image_id)
             annotations.append(preds_coco)
             image_id = image_id + 1
-
-        with open('data_gt_is2.json', 'a', encoding='utf-8') as f:
-            json.dump(annotations, f, ensure_ascii=False, indent=4)
-
-
-
+		
+			# Save plotted images
             if args.output:
                 if os.path.isdir(args.output):
                     assert os.path.isdir(args.output), args.output
@@ -124,53 +117,7 @@ if __name__ == "__main__":
             else:
                 cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
                 cv2.imshow(WINDOW_NAME, visualized_output.get_image()[:, :, ::-1])
-                #if cv2.waitKey(0) == 27:
-                #    break  # esc to quit
-
-    elif args.webcam:
-        assert args.input is None, "Cannot have both --input and --webcam!"
-        cam = cv2.VideoCapture(0)
-        for vis in tqdm.tqdm(demo.run_on_video(cam)):
-            cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-            cv2.imshow(WINDOW_NAME, vis)
-            if cv2.waitKey(1) == 27:
-                break  # esc to quit
-        cv2.destroyAllWindows()
-    elif args.video_input:
-        video = cv2.VideoCapture(args.video_input)
-        width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        frames_per_second = video.get(cv2.CAP_PROP_FPS)
-        num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        basename = os.path.basename(args.video_input)
-
-        if args.output:
-            if os.path.isdir(args.output):
-                output_fname = os.path.join(args.output, basename)
-                output_fname = os.path.splitext(output_fname)[0] + ".mp4" #original: ".mkv"
-            else:
-                output_fname = args.output
-            assert not os.path.isfile(output_fname), output_fname
-            output_file = cv2.VideoWriter(
-                filename=output_fname,
-                # some installation of opencv may not support x264 (due to its license),
-                # you can try other format (e.g. MPEG)
-                fourcc=cv2.VideoWriter_fourcc(*"MP4V"), #original: "x264"
-                fps=float(frames_per_second),
-                frameSize=(width, height),
-                isColor=True,
-            )
-        assert os.path.isfile(args.video_input)
-        for vis_frame in tqdm.tqdm(demo.run_on_video(video), total=num_frames):
-            if args.output:
-                output_file.write(vis_frame)
-            else:
-                cv2.namedWindow(basename, cv2.WINDOW_NORMAL)
-                cv2.imshow(basename, vis_frame)
-                if cv2.waitKey(1) == 27:
-                    break  # esc to quit
-        video.release()
-        if args.output:
-            output_file.release()
-        else:
-            cv2.destroyAllWindows()
+			
+		# Write predictions to json file        
+		with open('annotations.json', 'a', encoding='utf-8') as f:
+            json.dump(annotations, f, ensure_ascii=False, indent=4)
